@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Calculadora de Supermercado</title>
+  <style>
+    :root{--bg:#f6f7fb;--card:#ffffff;--muted:#6b7280;--accent:#2563eb;--danger:#ef4444}
+    *{box-sizing:border-box;font-family:Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial}
+    body{margin:0;padding:24px;background:var(--bg);color:#111}
+    .container{max-width:980px;margin:0 auto}
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+    h1{font-size:20px;margin:0}
+    .card{background:var(--card);padding:16px;border-radius:12px;box-shadow:0 6px 18px rgba(15,23,42,0.06);}
+
+    form{display:flex;gap:8px;flex-wrap:wrap}
+    input[type=text], input[type=number]{padding:10px;border-radius:8px;border:1px solid #e6e9ef;min-width:120px}
+    input[type=number]{text-align:right}
+    button{padding:10px 12px;border-radius:8px;border:0;background:var(--accent);color:#fff;cursor:pointer}
+    button.ghost{background:transparent;color:var(--accent);border:1px solid #e6e9ef}
+    .controls{display:flex;gap:8px;align-items:center;margin-top:12px}
+
+    table{width:100%;border-collapse:collapse;margin-top:14px}
+    th,td{padding:10px;border-bottom:1px solid #f1f3f5;text-align:left}
+    th{font-weight:600;color:var(--muted);font-size:13px}
+    td.right{text-align:right}
+
+    .totals{display:flex;gap:12px;flex-direction:column;max-width:360px;margin-left:auto;margin-top:12px}
+    .totals .row{display:flex;justify-content:space-between;padding:8px 12px;border-radius:8px;background:#fbfdff}
+    .totals .row.bold{font-weight:700;font-size:18px}
+
+    .actions{display:flex;gap:8px;margin-top:12px}
+
+    .small{font-size:13px;color:var(--muted)}
+    .btn-danger{background:var(--danger)}
+    .editable{background:#fffbe6;padding:6px;border-radius:6px}
+
+    @media (max-width:720px){
+      form{flex-direction:column}
+      .totals{width:100%;margin-left:0}
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Calculadora de Supermercado</h1>
+      <div class="small">Rápida, salva localmente e imprime recibo</div>
+    </header>
+
+    <div class="card">
+      <form id="addForm" onsubmit="return false;">
+        <input id="name" type="text" placeholder="Produto (ex: Arroz 1kg)" required />
+        <input id="qty" type="number" min="0.01" step="0.01" placeholder="Quantidade" value="1" required />
+        <input id="price" type="number" min="0" step="0.01" placeholder="Preço unit. (R$)" required />
+        <button id="addBtn">Adicionar</button>
+        <button id="clearBtn" class="ghost" type="button">Limpar campos</button>
+      </form>
+
+      <div class="controls">
+        <label class="small">Desconto %: <input id="discount" type="number" min="0" max="100" value="0" style="width:80px;margin-left:6px;text-align:right"/></label>
+        <label class="small">Imposto %: <input id="tax" type="number" min="0" max="100" value="0" style="width:80px;margin-left:6px;text-align:right"/></label>
+        <label class="small">Entrega (R$): <input id="delivery" type="number" step="0.01" value="0" style="width:110px;margin-left:6px;text-align:right"/></label>
+        <button id="saveBtn" class="ghost" type="button">Salvar lista</button>
+        <button id="loadBtn" class="ghost" type="button">Carregar lista</button>
+        <button id="printBtn" class="ghost" type="button">Imprimir recibo</button>
+      </div>
+
+      <table id="itemsTable">
+        <thead>
+          <tr><th>Produto</th><th>Qtd</th><th class="right">Preço unit.</th><th class="right">Subtotal</th><th></th></tr>
+        </thead>
+        <tbody id="itemsBody">
+          <!-- items aqui -->
+        </tbody>
+      </table>
+
+      <div class="totals" id="totalsBlock">
+        <div class="row"><div class="small">Subtotal</div><div id="subtotal" class="right">R$ 0,00</div></div>
+        <div class="row"><div class="small">Desconto</div><div id="discountVal" class="right">R$ 0,00</div></div>
+        <div class="row"><div class="small">Imposto</div><div id="taxVal" class="right">R$ 0,00</div></div>
+        <div class="row"><div class="small">Entrega</div><div id="deliveryVal" class="right">R$ 0,00</div></div>
+        <div class="row bold"><div>Total</div><div id="total" class="right">R$ 0,00</div></div>
+      </div>
+
+      <div class="actions">
+        <button id="clearAll" class="btn-danger">Limpar lista</button>
+        <button id="exportCSV" class="ghost">Exportar CSV</button>
+      </div>
+
+      <p class="small" style="margin-top:10px">Dica: clique no subtotal para editar uma linha rapidamente.</p>
+    </div>
+  </div>
+
+  <script>
+    // Utilitários
+    const fmt = v => new Intl.NumberFormat('pt-BR', {style:'currency', currency:'BRL'}).format(v);
+
+    // Estado
+    let items = [];
+
+    // Elementos
+    const nameInput = document.getElementById('name');
+    const qtyInput = document.getElementById('qty');
+    const priceInput = document.getElementById('price');
+    const itemsBody = document.getElementById('itemsBody');
+    const subtotalEl = document.getElementById('subtotal');
+    const discountInput = document.getElementById('discount');
+    const taxInput = document.getElementById('tax');
+    const deliveryInput = document.getElementById('delivery');
+    const discountValEl = document.getElementById('discountVal');
+    const taxValEl = document.getElementById('taxVal');
+    const deliveryValEl = document.getElementById('deliveryVal');
+    const totalEl = document.getElementById('total');
+
+    // Eventos
+    document.getElementById('addBtn').addEventListener('click', () => {
+      const nome = nameInput.value.trim();
+      const qty = parseFloat(qtyInput.value) || 0;
+      const price = parseFloat(priceInput.value) || 0;
+      if(!nome || qty <= 0 || price < 0) return alert('Preencha nome, quantidade (>0) e preço.');
+      addItem({name: nome, qty, price});
+      nameInput.value=''; qtyInput.value='1'; priceInput.value=''; nameInput.focus();
+    });
+
+    document.getElementById('clearBtn').addEventListener('click', ()=>{nameInput.value='';qtyInput.value='1';priceInput.value='';});
+
+    discountInput.addEventListener('input', render);
+    taxInput.addEventListener('input', render);
+    deliveryInput.addEventListener('input', render);
+
+    document.getElementById('saveBtn').addEventListener('click', ()=>{
+      localStorage.setItem('super_calc_items', JSON.stringify(items));
+      localStorage.setItem('super_calc_meta', JSON.stringify({discount:+discountInput.value, tax:+taxInput.value, delivery:+deliveryInput.value}));
+      alert('Lista salva localmente.');
+    });
+
+    document.getElementById('loadBtn').addEventListener('click', ()=>{
+      const data = localStorage.getItem('super_calc_items');
+      const meta = localStorage.getItem('super_calc_meta');
+      if(data){ items = JSON.parse(data); if(meta){ const m=JSON.parse(meta); discountInput.value=m.discount || 0; taxInput.value=m.tax || 0; deliveryInput.value=m.delivery || 0; } render(); alert('Lista carregada.'); }
+      else alert('Não há lista salva.');
+    });
+
+    document.getElementById('clearAll').addEventListener('click', ()=>{
+      if(!confirm('Limpar TODA a lista?')) return; items=[]; render(); localStorage.removeItem('super_calc_items');
+    });
+
+    document.getElementById('exportCSV').addEventListener('click', ()=>{
+      if(items.length===0) return alert('Nenhum item para exportar.');
+      const rows = [['Produto','Quantidade','Preço Unit.','Subtotal']];
+      items.forEach(it=>rows.push([it.name,it.qty,it.price,(it.qty*it.price).toFixed(2)]));
+      const csv = rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+      const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href=url; a.download='lista_supermercado.csv'; a.click(); URL.revokeObjectURL(url);
+    });
+
+    document.getElementById('printBtn').addEventListener('click', ()=>{
+      const win = window.open('', '_blank');
+      const css = `<style>body{font-family:Arial;padding:18px}table{width:100%;border-collapse:collapse}td,th{padding:6px;border-bottom:1px solid #ddd;text-align:left}h2{text-align:center}</style>`;
+      win.document.write(`<html><head><title>Recibo</title>${css}</head><body><h2>Recibo - Calculadora de Supermercado</h2>${generateReceiptHTML()}<p style="text-align:center;margin-top:18px">Gerado em ${new Date().toLocaleString()}</p></body></html>`);
+      win.document.close();
+      win.print();
+    });
+
+    // Funções
+    function addItem(item){
+      items.push(item);
+      render();
+    }
+
+    function editItem(index){
+      const it = items[index];
+      const newName = prompt('Editar nome do produto', it.name);
+      if(newName===null) return;
+      const newQty = parseFloat(prompt('Editar quantidade', it.qty));
+      const newPrice = parseFloat(prompt('Editar preço unit.', it.price));
+      if(!newName || isNaN(newQty) || isNaN(newPrice)) return alert('Entrada inválida');
+      items[index] = {name:newName, qty:newQty, price:newPrice}; render();
+    }
+
+    function removeItem(index){
+      if(!confirm('Remover este item?')) return; items.splice(index,1); render();
+    }
+
+    function calculate(){
+      const subtotal = items.reduce((s,i)=>s + (i.qty * i.price), 0);
+      const discountPct = Math.max(0, Math.min(100, parseFloat(discountInput.value)||0));
+      const taxPct = Math.max(0, Math.min(100, parseFloat(taxInput.value)||0));
+      const delivery = parseFloat(deliveryInput.value)||0;
+      const discountVal = subtotal * (discountPct/100);
+      const afterDiscount = subtotal - discountVal;
+      const taxVal = afterDiscount * (taxPct/100);
+      const total = afterDiscount + taxVal + delivery;
+      return {subtotal, discountVal, taxVal, delivery, total};
+    }
+
+    function render(){
+      // tabela
+      itemsBody.innerHTML='';
+      items.forEach((it, idx)=>{
+        const tr = document.createElement('tr');
+        const tdName = document.createElement('td'); tdName.textContent = it.name; tr.appendChild(tdName);
+        const tdQty = document.createElement('td'); tdQty.textContent = it.qty; tr.appendChild(tdQty);
+        const tdPrice = document.createElement('td'); tdPrice.className='right'; tdPrice.textContent = fmt(it.price); tr.appendChild(tdPrice);
+        const tdSub = document.createElement('td'); tdSub.className='right'; tdSub.textContent = fmt(it.qty * it.price); tdSub.title='Clique para editar'; tdSub.style.cursor='pointer'; tdSub.addEventListener('click', ()=>editItem(idx)); tr.appendChild(tdSub);
+        const tdActions = document.createElement('td'); tdActions.style.textAlign='right';
+        const btnDel = document.createElement('button'); btnDel.textContent='Remover'; btnDel.className='ghost'; btnDel.addEventListener('click', ()=>removeItem(idx));
+        tdActions.appendChild(btnDel); tr.appendChild(tdActions);
+        itemsBody.appendChild(tr);
+      });
+
+      const c = calculate();
+      subtotalEl.textContent = fmt(c.subtotal);
+      discountValEl.textContent = fmt(c.discountVal);
+      taxValEl.textContent = fmt(c.taxVal);
+      deliveryValEl.textContent = fmt(c.delivery);
+      totalEl.textContent = fmt(c.total);
+    }
+
+    function generateReceiptHTML(){
+      const rows = items.map(it => `<tr><td>${escapeHtml(it.name)}</td><td style="text-align:right">${it.qty}</td><td style="text-align:right">${fmt(it.price)}</td><td style="text-align:right">${fmt(it.qty * it.price)}</td></tr>`).join('');
+      const c = calculate();
+      return `<table><thead><tr><th>Produto</th><th>Qtd</th><th style="text-align:right">Preço</th><th style="text-align:right">Subtotal</th></tr></thead><tbody>${rows}</tbody></table><hr/><table style="width:100%"><tr><td>Subtotal</td><td style="text-align:right">${fmt(c.subtotal)}</td></tr><tr><td>Desconto</td><td style="text-align:right">${fmt(c.discountVal)}</td></tr><tr><td>Imposto</td><td style="text-align:right">${fmt(c.taxVal)}</td></tr><tr><td>Entrega</td><td style="text-align:right">${fmt(c.delivery)}</td></tr><tr style="font-weight:700"><td>Total</td><td style="text-align:right">${fmt(c.total)}</td></tr></table>`;
+    }
+
+    function escapeHtml(text){ return String(text).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+    // inicial
+    (function(){
+      // exemplinho
+      items = [
+        //{name:'Arroz 1kg', qty:2, price:12.5},
+      ];
+      render();
+    })();
+  </script>
+</body>
+</html>
